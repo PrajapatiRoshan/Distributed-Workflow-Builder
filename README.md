@@ -241,6 +241,14 @@ Each node type has specific configuration options:
 3. Optionally provide input data
 4. Monitor execution in real-time on the **Execution** page
 
+![Workflow Execution](assest-readme/runs.png)
+
+### Run History
+
+View all past workflow executions from the **Runs** page. Track status, duration, and results for each run.
+
+![Run History](assest-readme/runs-history.png)
+
 ---
 
 ## Node Types
