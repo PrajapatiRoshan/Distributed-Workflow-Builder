@@ -1,0 +1,61 @@
+# Distributed Workflow Builder — Task Checklist
+
+## Phase 1: Architecture & Design
+- [/] Create high-level architecture diagram & service breakdown
+- [ ] Define DB schema (PostgreSQL)
+- [ ] Define OpenAPI spec for all services
+- [ ] DAG engine design document
+- [ ] Sandbox runtime design document
+- [ ] Trade-off analysis document
+
+## Phase 2: Project Scaffold & DevOps
+- [ ] Create monorepo folder structure
+- [ ] docker-compose.yml (PostgreSQL, Redis, MinIO, NATS, all services)
+- [ ] CI pipeline (GitHub Actions)
+- [ ] Linting configs (ESLint, Prettier)
+
+## Phase 3: Backend Services
+- [ ] API Gateway (reverse proxy + rate limiting)
+- [ ] Auth Service (JWT + refresh tokens, RBAC)
+- [ ] Workflow Service (CRUD, DAG versioning)
+- [ ] Execution Orchestrator (state machine, DAG runner)
+- [ ] Worker Service (horizontally scalable, Redis queue consumer)
+- [ ] Plugin Service (registry, versioning, schema validation)
+- [ ] WebSocket gateway (real-time updates)
+- [ ] NDJSON streaming endpoint (/runs/:id/logs/stream)
+
+## Phase 4: DAG Engine
+- [ ] Topological sort + cycle detection
+- [ ] Parallel execution with Promise.all
+- [ ] IF/ELSE branching
+- [ ] Retry with exponential backoff
+- [ ] Idempotency key enforcement
+- [ ] Pause / Resume / Cancel state machine
+- [ ] Deterministic ordering
+
+## Phase 5: Plugin System
+- [ ] TEXT_TRANSFORM plugin (Caesar cipher, reverse, SHA-256)
+- [ ] API_PROXY plugin (fetch, header injection, cache toggle)
+- [ ] DATA_AGGREGATOR plugin (summary hash map)
+- [ ] DELAY plugin (blocking/non-blocking)
+- [ ] Docker sandbox per plugin execution
+- [ ] Resource limits (CPU, memory, timeout)
+
+## Phase 6: Frontend
+- [ ] React + TypeScript project scaffold (Vite)
+- [ ] Drag-and-drop DAG builder (React Flow)
+- [ ] Real-time execution visualizer
+- [ ] Log stream viewer (NDJSON)
+- [ ] Workflow versioning panel
+- [ ] Marketplace browsing UI
+- [ ] Error boundary + optimistic UI
+
+## Phase 7: Testing & Verification
+- [ ] Unit tests (DAG engine, auth, plugins)
+- [ ] Integration tests
+- [ ] Load testing setup (k6)
+- [ ] Health check endpoints
+
+## Phase 8: Documentation & Deliverables
+- [ ] Deployment guide
+- [ ] Architecture walkthrough artifact

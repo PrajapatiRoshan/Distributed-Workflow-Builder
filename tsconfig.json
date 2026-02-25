@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/dag-engine" },
+    { "path": "./services/auth" },
+    { "path": "./services/workflow" },
+    { "path": "./services/orchestrator" },
+    { "path": "./services/worker" },
+    { "path": "./services/gateway" },
+    { "path": "./services/ws-gateway" },
+    { "path": "./services/plugin" }
+  ]
+}

@@ -1,0 +1,244 @@
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: '10m'
+      max-file: '3'
+
+services:
+  postgres:
+    <<: *service-defaults
+    image: postgres:16-alpine
+    container_name: wfb-postgres
+    network_mode: host
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wfb}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wfbsecret}
+      POSTGRES_DB: ${POSTGRES_DB:-wfb}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER:-wfb}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    <<: *service-defaults
+    image: redis:7-alpine
+    container_name: wfb-redis
+    network_mode: host
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --port 6379
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-p', '6379', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    <<: *service-defaults
+    image: minio/minio:latest
+    container_name: wfb-minio
+    network_mode: host
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  gateway:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: services/gateway/Dockerfile
+      network: host
+    container_name: wfb-gateway
+    network_mode: host
+    environment:
+      PORT: 8000
+      AUTH_SERVICE_URL: http://127.0.0.1:3001
+      WORKFLOW_SERVICE_URL: http://127.0.0.1:3002
+      ORCHESTRATOR_SERVICE_URL: http://127.0.0.1:3003
+      PLUGIN_SERVICE_URL: http://127.0.0.1:3004
+      WS_GATEWAY_URL: http://127.0.0.1:3005
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-test_public_key}
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 100
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  auth:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: services/auth/Dockerfile
+      network: host
+    container_name: wfb-auth
+    network_mode: host
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wfb}:${POSTGRES_PASSWORD:-wfbsecret}@127.0.0.1:5432/${POSTGRES_DB:-wfb}
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey_change_in_production}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      BCRYPT_ROUNDS: 12
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3001/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  workflow:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: services/workflow/Dockerfile
+      network: host
+    container_name: wfb-workflow
+    network_mode: host
+    environment:
+      PORT: 3002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wfb}:${POSTGRES_PASSWORD:-wfbsecret}@127.0.0.1:5432/${POSTGRES_DB:-wfb}
+      REDIS_URL: redis://127.0.0.1:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3002/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  orchestrator:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: services/orchestrator/Dockerfile
+      network: host
+    container_name: wfb-orchestrator
+    network_mode: host
+    environment:
+      PORT: 3003
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wfb}:${POSTGRES_PASSWORD:-wfbsecret}@127.0.0.1:5432/${POSTGRES_DB:-wfb}
+      REDIS_URL: redis://127.0.0.1:6379
+      WS_GATEWAY_URL: http://127.0.0.1:3005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3003/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: services/worker/Dockerfile
+      network: host
+    container_name: wfb-worker
+    network_mode: host
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wfb}:${POSTGRES_PASSWORD:-wfbsecret}@127.0.0.1:5432/${POSTGRES_DB:-wfb}
+      REDIS_URL: redis://127.0.0.1:6379
+      MINIO_ENDPOINT: 127.0.0.1
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: plugins
+      WORKER_CONCURRENCY: 10
+      SANDBOX_CPU_LIMIT: '0.5'
+      SANDBOX_MEMORY_LIMIT: 256m
+      SANDBOX_TIMEOUT_MS: 30000
+      WS_GATEWAY_URL: http://127.0.0.1:3005
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  plugin:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: services/plugin/Dockerfile
+      network: host
+    container_name: wfb-plugin
+    network_mode: host
+    environment:
+      PORT: 3004
+      DATABASE_URL: postgresql://${POSTGRES_USER:-wfb}:${POSTGRES_PASSWORD:-wfbsecret}@127.0.0.1:5432/${POSTGRES_DB:-wfb}
+      REDIS_URL: redis://127.0.0.1:6379
+      MINIO_ENDPOINT: 127.0.0.1
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_BUCKET: plugins
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3004/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ws-gateway:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: services/ws-gateway/Dockerfile
+      network: host
+    container_name: wfb-ws-gateway
+    network_mode: host
+    environment:
+      PORT: 3005
+      REDIS_URL: redis://127.0.0.1:6379
+      JWT_SECRET: ${JWT_SECRET:-supersecretjwtkey_change_in_production}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3005/health']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
