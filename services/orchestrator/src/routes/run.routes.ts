@@ -6,7 +6,7 @@ import { db } from '../db';
 import { redis } from '../redis';
 import { logger } from '../logger';
 import { buildExecutionPlan } from '@wfb/dag-engine';
-import type { StepJobPayload, WorkflowDefinition, RunStatus, DEFAULT_RETRY_POLICY } from '@wfb/shared-types';
+import type { StepJobPayload, WorkflowDefinition, RunStatus } from '@wfb/shared-types';
 import { DEFAULT_RETRY_POLICY as DRP } from '@wfb/shared-types';
 
 export const runRouter = Router();
@@ -27,18 +27,19 @@ const CreateRunSchema = z.object({
 
 // ─── Start a run ─────────────────────────────────────────────
 
-runRouter.post('/', async (req, res, next) => {
-    try {
-        const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
-        const tenantId = req.user!.tid;
-        const userId = req.user!.sub;
+runRouter.post('/', (req, res, next) => {
+    void (async () => {
+        try {
+            const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
+            const tenantId = req.user!.tid;
+            const userId = req.user!.sub;
 
-        const parsed = CreateRunSchema.safeParse(req.body);
-        if (!parsed.success) {
-            res.status(400).json({ success: false, error: 'Validation failed', details: parsed.error.flatten() });
-            return;
-        }
-        const { workflowId, input } = parsed.data;
+            const parsed = CreateRunSchema.safeParse(req.body);
+            if (!parsed.success) {
+                res.status(400).json({ success: false, error: 'Validation failed', details: parsed.error.flatten() });
+                return;
+            }
+            const { workflowId, input } = parsed.data;
 
         // Idempotency: if key exists, return existing run
         if (idempotencyKey) {
@@ -93,7 +94,7 @@ runRouter.post('/', async (req, res, next) => {
         );
 
         // Build execution plan from DAG
-        const definition = workflow.definition as WorkflowDefinition;
+        const definition = workflow.definition;
         const plan = buildExecutionPlan(definition);
         const nodeMap = plan.nodeMap;
 
@@ -140,43 +141,49 @@ runRouter.post('/', async (req, res, next) => {
 
         logger.info('Run started', { runId, workflowId, tenantId });
         res.status(201).json({ success: true, data: { runId } });
-    } catch (err) { next(err); }
+        } catch (err) { next(err); }
+    })();
 });
 
 // ─── Get run status ──────────────────────────────────────────
 
-runRouter.get('/:id', async (req, res, next) => {
-    try {
-        const { rows } = await db.query(
-            `SELECT wr.*, json_agg(rs.* ORDER BY rs.step_id) AS steps
+runRouter.get('/:id', (req, res, next) => {
+    void (async () => {
+        try {
+            const { rows } = await db.query(
+                `SELECT wr.*, json_agg(rs.* ORDER BY rs.step_id) AS steps
        FROM workflow_runs wr
        LEFT JOIN run_steps rs ON rs.run_id = wr.id
        WHERE wr.id = $1 AND wr.tenant_id = $2
        GROUP BY wr.id`,
-            [req.params['id'], req.user!.tid],
-        );
-        if (!rows[0]) {
-            res.status(404).json({ success: false, error: 'Run not found' });
-            return;
-        }
-        res.json({ success: true, data: rows[0] });
-    } catch (err) { next(err); }
+                [req.params['id'], req.user!.tid],
+            );
+            if (!rows[0]) {
+                res.status(404).json({ success: false, error: 'Run not found' });
+                return;
+            }
+            const runData = rows[0] as Record<string, unknown>;
+            res.json({ success: true, data: runData });
+        } catch (err) { next(err); }
+    })();
 });
 
 // ─── List runs ───────────────────────────────────────────────
 
-runRouter.get('/', async (req, res, next) => {
-    try {
-        const tenantId = req.user!.tid;
-        const limit = Math.min(parseInt(req.query['limit'] as string ?? '20', 10), 100);
-        const { rows } = await db.query(
-            `SELECT id, status, started_at, completed_at, created_at
+runRouter.get('/', (req, res, next) => {
+    void (async () => {
+        try {
+            const tenantId = req.user!.tid;
+            const limit = Math.min(parseInt(req.query['limit'] as string ?? '20', 10), 100);
+            const { rows } = await db.query(
+                `SELECT id, status, started_at, completed_at, created_at
        FROM workflow_runs WHERE tenant_id = $1
        ORDER BY created_at DESC LIMIT $2`,
-            [tenantId, limit],
-        );
-        res.json({ success: true, data: { items: rows } });
-    } catch (err) { next(err); }
+                [tenantId, limit],
+            );
+            res.json({ success: true, data: { items: rows } });
+        } catch (err) { next(err); }
+    })();
 });
 
 // ─── Pause / Resume / Cancel ─────────────────────────────────
@@ -185,17 +192,18 @@ const StatusUpdateSchema = z.object({
     action: z.enum(['pause', 'resume', 'cancel']),
 });
 
-runRouter.patch('/:id/status', async (req, res, next) => {
-    try {
-        const parsed = StatusUpdateSchema.safeParse(req.body);
-        if (!parsed.success) {
-            res.status(400).json({ success: false, error: 'action must be pause | resume | cancel' });
-            return;
-        }
+runRouter.patch('/:id/status', (req, res, next) => {
+    void (async () => {
+        try {
+            const parsed = StatusUpdateSchema.safeParse(req.body);
+            if (!parsed.success) {
+                res.status(400).json({ success: false, error: 'action must be pause | resume | cancel' });
+                return;
+            }
 
-        const { action } = parsed.data;
-        const runId = req.params['id'];
-        const tenantId = req.user!.tid;
+            const { action } = parsed.data;
+            const runId = req.params['id'];
+            const tenantId = req.user!.tid;
 
         const { rows: [run] } = await db.query<{ status: RunStatus }>(
             `SELECT status FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
@@ -240,21 +248,24 @@ runRouter.patch('/:id/status', async (req, res, next) => {
         }));
 
         res.json({ success: true, data: { runId, status: newStatus } });
-    } catch (err) { next(err); }
+        } catch (err) { next(err); }
+    })();
 });
 
 // ─── NDJSON log stream ───────────────────────────────────────
 
-runRouter.get('/:id/logs/stream', async (req, res, next) => {
-    try {
-        const runId = req.params['id'];
-        const tenantId = req.user!.tid;
+runRouter.get('/:id/logs/stream', (req, res, next) => {
+    void (async () => {
+        try {
+            const runId = req.params['id'];
+            const tenantId = req.user!.tid;
 
-        // Verify ownership
-        const { rows: [run] } = await db.query(
-            `SELECT id, status FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
-            [runId, tenantId],
-        );
+            // Verify ownership
+            const { rows } = await db.query<{ id: string; status: string }>(
+                `SELECT id, status FROM workflow_runs WHERE id = $1 AND tenant_id = $2`,
+                [runId, tenantId],
+            );
+            const run = rows[0];
         if (!run) {
             res.status(404).json({ success: false, error: 'Run not found' });
             return;
@@ -286,7 +297,7 @@ runRouter.get('/:id/logs/stream', async (req, res, next) => {
         }
 
         // If run is already terminal, close stream
-        if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status as string)) {
+        if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status)) {
             res.end();
             return;
         }
@@ -313,5 +324,6 @@ runRouter.get('/:id/logs/stream', async (req, res, next) => {
             void subscriber.unsubscribe();
             void subscriber.quit();
         });
-    } catch (err) { next(err); }
+        } catch (err) { next(err); }
+    })();
 });

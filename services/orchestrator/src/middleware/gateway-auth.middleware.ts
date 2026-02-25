@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { JWTPayload } from '@wfb/shared-types';
 
+// eslint-disable-next-line @typescript-eslint/no-namespace
 declare global {
     namespace Express {
         interface Request { user?: JWTPayload; }

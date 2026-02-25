@@ -27,9 +27,10 @@ const RegisterSchema = z.object({
     tenantName: z.string().min(2).max(255).optional(),
 });
 
-authRouter.post('/register', validate(RegisterSchema), auditLog('REGISTER'), async (req, res, next) => {
-    try {
-        const { email, password, tenantName } = req.body as z.infer<typeof RegisterSchema>;
+authRouter.post('/register', validate(RegisterSchema), auditLog('REGISTER'), (req, res, next) => {
+    void (async () => {
+        try {
+            const { email, password, tenantName } = req.body as z.infer<typeof RegisterSchema>;
 
         // Create or use existing tenant
         let tenantId: string;
@@ -72,9 +73,10 @@ authRouter.post('/register', validate(RegisterSchema), auditLog('REGISTER'), asy
                 role: user.role,
             },
         });
-    } catch (err) {
-        next(err);
-    }
+        } catch (err) {
+            next(err);
+        }
+    })();
 });
 
 // ─── Login ───────────────────────────────────────────────────
@@ -84,9 +86,10 @@ const LoginSchema = z.object({
     password: z.string().min(1),
 });
 
-authRouter.post('/login', validate(LoginSchema), auditLog('LOGIN'), async (req, res, next) => {
-    try {
-        const { email, password } = req.body as z.infer<typeof LoginSchema>;
+authRouter.post('/login', validate(LoginSchema), auditLog('LOGIN'), (req, res, next) => {
+    void (async () => {
+        try {
+            const { email, password } = req.body as z.infer<typeof LoginSchema>;
 
         const { rows } = await db.query<{
             id: string;
@@ -119,16 +122,18 @@ authRouter.post('/login', validate(LoginSchema), auditLog('LOGIN'), async (req, 
                 role: user.role,
             },
         });
-    } catch (err) {
-        next(err);
-    }
+        } catch (err) {
+            next(err);
+        }
+    })();
 });
 
 // ─── Refresh ─────────────────────────────────────────────────
 
-authRouter.post('/refresh', async (req, res, next) => {
-    try {
-        const rawToken = req.cookies?.['refreshToken'] as string | undefined;
+authRouter.post('/refresh', (req, res, next) => {
+    void (async () => {
+        try {
+            const rawToken = req.cookies?.['refreshToken'] as string | undefined;
         if (!rawToken) {
             res.status(401).json({ success: false, error: 'No refresh token' });
             return;
@@ -147,38 +152,44 @@ authRouter.post('/refresh', async (req, res, next) => {
             success: true,
             data: { accessToken: tokens.accessToken, expiresIn: tokens.expiresIn },
         });
-    } catch (err) {
-        next(err);
-    }
+        } catch (err) {
+            next(err);
+        }
+    })();
 });
 
 // ─── Logout ──────────────────────────────────────────────────
 
-authRouter.post('/logout', requireAuth, async (req, res, next) => {
-    try {
-        const userId = req.user!.sub;
-        await revokeAllUserTokens(userId);
-        res.clearCookie('refreshToken');
-        res.json({ success: true, message: 'Logged out successfully' });
-    } catch (err) {
-        next(err);
-    }
+authRouter.post('/logout', requireAuth, (req, res, next) => {
+    void (async () => {
+        try {
+            const userId = req.user!.sub;
+            await revokeAllUserTokens(userId);
+            res.clearCookie('refreshToken');
+            res.json({ success: true, message: 'Logged out successfully' });
+        } catch (err) {
+            next(err);
+        }
+    })();
 });
 
 // ─── Me (current user info) ──────────────────────────────────
 
-authRouter.get('/me', requireAuth, async (req, res, next) => {
-    try {
-        const { rows } = await db.query(
-            `SELECT id, tenant_id, email, role, is_active, created_at FROM users WHERE id = $1`,
-            [req.user!.sub],
-        );
-        if (!rows[0]) {
-            res.status(404).json({ success: false, error: 'User not found' });
-            return;
+authRouter.get('/me', requireAuth, (req, res, next) => {
+    void (async () => {
+        try {
+            const { rows } = await db.query(
+                `SELECT id, tenant_id, email, role, is_active, created_at FROM users WHERE id = $1`,
+                [req.user!.sub],
+            );
+            if (!rows[0]) {
+                res.status(404).json({ success: false, error: 'User not found' });
+                return;
+            }
+            const userData = rows[0] as Record<string, unknown>;
+            res.json({ success: true, data: userData });
+        } catch (err) {
+            next(err);
         }
-        res.json({ success: true, data: rows[0] });
-    } catch (err) {
-        next(err);
-    }
+    })();
 });

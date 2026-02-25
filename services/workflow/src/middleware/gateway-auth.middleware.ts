@@ -3,6 +3,7 @@ import type { JWTPayload } from '@wfb/shared-types';
 
 // The gateway injects X-User-Id, X-Tenant-Id, X-User-Role headers after JWT validation
 // Internal services trust these headers (only gateway is exposed externally)
+// eslint-disable-next-line @typescript-eslint/no-namespace
 declare global {
     namespace Express {
         interface Request {

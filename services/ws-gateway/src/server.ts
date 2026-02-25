@@ -67,9 +67,9 @@ io.on('connection', (socket) => {
 // ─── Redis Pub/Sub listener ──────────────────────────────────
 // Fan-out run events from Redis directly to connected UI clients
 
-subscriber.psubscribe('run:*', (err, count) => {
+void subscriber.psubscribe('run:*', (err, count) => {
     if (err) console.error('Redis psubscribe error', err);
-    else console.info(`Subscribed to ${count} Redis channels`);
+    else console.info(`Subscribed to ${String(count)} Redis channels`);
 });
 
 subscriber.on('pmessage', (_pattern, channel, message) => {
