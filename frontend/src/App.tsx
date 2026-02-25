@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import { Toaster } from '@/components/ui/Toaster'
@@ -20,8 +21,10 @@ import NotFoundPage from '@/pages/NotFoundPage'
 
 function ProtectedRoute() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const accessToken = useAuthStore((state) => state.accessToken)
 
-  if (!isAuthenticated) {
+  // Check if we have both state and token
+  if (!isAuthenticated || !accessToken) {
     return <Navigate to="/login" replace />
   }
 
@@ -30,8 +33,10 @@ function ProtectedRoute() {
 
 function PublicRoute() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const accessToken = useAuthStore((state) => state.accessToken)
 
-  if (isAuthenticated) {
+  // Only redirect if we have both state and token
+  if (isAuthenticated && accessToken) {
     return <Navigate to="/" replace />
   }
 
@@ -39,6 +44,33 @@ function PublicRoute() {
 }
 
 export default function App() {
+  const [isInitialized, setIsInitialized] = useState(false)
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated)
+  const accessToken = useAuthStore((state) => state.accessToken)
+  const logout = useAuthStore((state) => state.logout)
+
+  // Validate auth state on mount
+  useEffect(() => {
+    const validateAuth = async () => {
+      // If persisted state says authenticated but no token, clear the state
+      if (isAuthenticated && !accessToken) {
+        await logout()
+      }
+      setIsInitialized(true)
+    }
+
+    validateAuth()
+  }, [])
+
+  // Show nothing while initializing to prevent route flashing
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-slate-600">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <ErrorBoundary>
       <BrowserRouter>

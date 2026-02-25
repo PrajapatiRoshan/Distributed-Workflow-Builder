@@ -41,7 +41,9 @@ apiClient.interceptors.response.use(
           return apiClient(originalRequest)
         }
       } catch {
+        // Clear all auth state
         localStorage.removeItem('accessToken')
+        localStorage.removeItem('auth-storage')
         window.location.href = '/login'
       }
     }
